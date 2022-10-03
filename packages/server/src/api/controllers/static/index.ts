@@ -1,3 +1,5 @@
+import { readFileSync } from "fs"
+
 require("svelte/register")
 
 const send = require("koa-send")
@@ -116,12 +118,56 @@ export const serveApp = async function (ctx: any) {
     })
 
     const appHbs = loadHandlebarsFile(`${__dirname}/templates/app.hbs`)
-    ctx.body = await processString(appHbs, {
+
+    const body = await processString(appHbs, {
       head,
       body: html,
       style: css.code,
       appId,
     })
+
+    const jsdom = require("jsdom")
+    const { JSDOM } = jsdom
+
+    const dom = await new JSDOM(body, {
+      runScripts: "dangerously",
+      resources: "usable",
+      url: "http://localhost:10000",
+    })
+
+    let scripts = dom.window.document.querySelectorAll("script")
+
+    scripts = Object.values(scripts).filter((script: any, i: number) => {
+      scripts[i].remove()
+      return script.src !== ""
+    })
+
+    // scripts.map((script: any) => {
+    const script = readFileSync(
+      join(
+        NODE_MODULES_PATH,
+        "@budibase",
+        "client",
+        "dist",
+        "budibase-client.js"
+      ),
+      "utf8"
+    )
+    dom.window.eval(script)
+    // });
+    //
+    // dom.window.addEventListener('load', () => {
+    //   ctx.body = dom.serialize();
+    // });
+
+    ctx.body = dom.serialize()
+
+    // ctx.body = await processString(appHbs, {
+    //   head,
+    //   body: html,
+    //   style: css.code,
+    //   appId,
+    // })
   } else {
     // just return the app info for jest to assert on
     ctx.body = appInfo
