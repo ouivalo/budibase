@@ -1,4 +1,5 @@
 import { readFileSync } from "fs"
+import { parseHTML } from "linkedom"
 
 require("svelte/register")
 
@@ -102,6 +103,30 @@ export const deleteObjects = async function (ctx: any) {
   ctx.body = await deleteFiles(ObjectStoreBuckets.APPS, ctx.request.body.keys)
 }
 
+async function ssrRendering(body: string) {
+  const jsdom = require("jsdom")
+  const { JSDOM } = jsdom
+
+  const dom = await new JSDOM(body, {
+    runScripts: "dangerously",
+    resources: "usable",
+    url: "http://localhost:10000",
+  })
+
+  return new Promise((resolve, reject) => {
+    dom.window.document.addEventListener("DOMContentLoaded", () => {
+      // We need to delay one extra turn because we are the first DOMContentLoaded listener,
+      // but we want to execute this code only after the second DOMContentLoaded listener
+      // (added by external.js) fires.
+      setImmediate(() => {
+        const html = dom.serialize()
+        console.log("dom.serialize()", html)
+        resolve(html)
+      })
+    })
+  })
+}
+
 export const serveApp = async function (ctx: any) {
   const db = getAppDB({ skip_setup: true })
   const appInfo = await db.get(DocumentType.APP_METADATA)
@@ -126,41 +151,40 @@ export const serveApp = async function (ctx: any) {
       appId,
     })
 
-    const jsdom = require("jsdom")
-    const { JSDOM } = jsdom
-
-    const dom = await new JSDOM(body, {
-      runScripts: "dangerously",
-      resources: "usable",
-      url: "http://localhost:10000",
+    const ssr = await ssrRendering(body).catch(err => {
+      throw new Error(`SSR Rendering error: ${err}`)
     })
 
-    let scripts = dom.window.document.querySelectorAll("script")
+    // ctx.request.socket.setTimeout(5 * 60 * 1000)
+    ctx.body = ssr
+    // const { window, document } = parseHTML(body)
 
-    scripts = Object.values(scripts).filter((script: any, i: number) => {
-      scripts[i].remove()
-      return script.src !== ""
-    })
+    // const listNodesScript = document.querySelectorAll("script")
+
+    // const scripts = Object.values(listNodesScript).filter(
+    //   (script: any, i: number) => {
+    //     scripts[i].remove()
+    //     return script.src !== ""
+    //   }
+    // )
 
     // scripts.map((script: any) => {
-    const script = readFileSync(
-      join(
-        NODE_MODULES_PATH,
-        "@budibase",
-        "client",
-        "dist",
-        "budibase-client.js"
-      ),
-      "utf8"
-    )
-    dom.window.eval(script)
+    // const script = readFileSync(
+    //   join(
+    //     NODE_MODULES_PATH,
+    //     "@budibase",
+    //     "client",
+    //     "dist",
+    //     "budibase-client.js"
+    //   ),
+    //   "utf8"
+    // )
+    // window.eval(script)
     // });
     //
     // dom.window.addEventListener('load', () => {
     //   ctx.body = dom.serialize();
     // });
-
-    ctx.body = dom.serialize()
 
     // ctx.body = await processString(appHbs, {
     //   head,
