@@ -57,8 +57,8 @@ router
     controller.deleteObjects
   )
   .get("/app/preview", authorized(BUILDER), controller.serveBuilderPreview)
-  .get("/:appId/:path*", controller.serveApp)
-  .get("/app/:appUrl/:path*", controller.serveApp)
+  .get("/:appId/:path*", controller.serveApp, controller.renderSSR)
+  .get("/app/:appUrl/:path*", controller.serveApp, controller.renderSSR)
   .post(
     "/api/attachments/:datasourceId/url",
     authorized(PermissionTypes.TABLE, PermissionLevels.READ),

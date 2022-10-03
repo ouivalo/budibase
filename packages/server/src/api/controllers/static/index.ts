@@ -103,31 +103,58 @@ export const deleteObjects = async function (ctx: any) {
   ctx.body = await deleteFiles(ObjectStoreBuckets.APPS, ctx.request.body.keys)
 }
 
-async function ssrRendering(body: string) {
+const ssr = async function (ctx: any) {
   const jsdom = require("jsdom")
   const { JSDOM } = jsdom
 
-  const dom = await new JSDOM(body, {
+  const dom = await new JSDOM(ctx.body, {
+    url: "http://localhost:10000/app/commission-calculation-template",
+    referrer: "http://localhost:10000",
     runScripts: "dangerously",
     resources: "usable",
-    url: "http://localhost:10000",
   })
 
-  return new Promise((resolve, reject) => {
-    dom.window.document.addEventListener("DOMContentLoaded", () => {
-      // We need to delay one extra turn because we are the first DOMContentLoaded listener,
-      // but we want to execute this code only after the second DOMContentLoaded listener
-      // (added by external.js) fires.
-      setImmediate(() => {
-        const html = dom.serialize()
-        console.log("dom.serialize()", html)
-        resolve(html)
-      })
-    })
+  console.log("dom created !")
+
+  return new Promise(resolve => {
+    console.log("Enter promise")
+    resolve(dom.serialize())
+    // try {
+    //   dom.window.document.addEventListener("DOMContentLoaded", () => {
+    //     console.log("DOMContentLoaded")
+    //     // We need to delay one extra turn because we are the first DOMContentLoaded listener,
+    //     // but we want to execute this code only after the second DOMContentLoaded listener.
+    //     setImmediate(() => {
+    //       console.log("DOMContentLoaded immediate")
+    //       const html = dom.serialize()
+    //       // console.log("html", html)
+    //       resolve(html)
+    //     })
+    //   })
+    // } catch (e: any) {
+    //   console.log("Error! Cannot add DOMContentLoaded event!")
+    //   resolve(ctx.body)
+    // }
   })
 }
 
-export const serveApp = async function (ctx: any) {
+export const renderSSR = async function (ctx: any) {
+  console.log("Render SSR")
+  // console.log("body", ctx.body)
+
+  const body = await ssr(ctx)
+  console.log("SSR Successfully rendered")
+  console.log("SSR Body", body)
+  ctx.body = body
+
+  // const dom = await new JSDOM(ctx.body, {
+  //   runScripts: "dangerously",
+  //   resources: "usable",
+  //   url: "http://localhost:10000",
+  // })
+}
+
+export const serveApp = async function (ctx: any, next: any) {
   const db = getAppDB({ skip_setup: true })
   const appInfo = await db.get(DocumentType.APP_METADATA)
   let appId = getAppId()
@@ -151,12 +178,16 @@ export const serveApp = async function (ctx: any) {
       appId,
     })
 
-    const ssr = await ssrRendering(body).catch(err => {
-      throw new Error(`SSR Rendering error: ${err}`)
-    })
+    // const ssr = await ssrRendering(body).catch(err => {
+    //   throw new Error(`SSR Rendering error: ${err}`)
+    // })
 
     // ctx.request.socket.setTimeout(5 * 60 * 1000)
-    ctx.body = ssr
+    console.log("Serve app")
+    ctx.body = body
+
+    console.log("next()")
+    await next()
     // const { window, document } = parseHTML(body)
 
     // const listNodesScript = document.querySelectorAll("script")
